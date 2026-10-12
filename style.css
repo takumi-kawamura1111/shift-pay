@@ -366,4 +366,23 @@ input:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
   font-size: 15px;
 }
 .btn.danger { color: var(--danger); }
+.btn.primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+  font-weight: 700;
+}
 .hidden { display: none !important; }
+
+/* ===== お知らせ ===== */
+.notice {
+  background: var(--card);
+  border: 2px solid var(--warn);
+  border-radius: 16px;
+  padding: 14px 16px;
+  margin-bottom: 12px;
+}
+.notice p { margin: 0 0 10px; font-size: 14px; line-height: 1.6; }
+.notice-actions { display: flex; gap: 8px; }
+.notice-actions .btn { flex: none; padding: 0 16px; min-height: 40px; }
+.notice-actions .btn.primary { flex: 1; }

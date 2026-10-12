@@ -22,6 +22,14 @@
   </header>
 
   <main>
+    <div class="notice hidden" id="notice" role="status">
+      <p id="noticeText"></p>
+      <div class="notice-actions">
+        <button type="button" class="btn primary" id="noticeAction"></button>
+        <button type="button" class="btn" id="noticeClose">あとで</button>
+      </div>
+    </div>
+
     <section class="card total-card">
       <div class="total-caption">今月の給与見込み</div>
       <div class="total-amount" id="totalAmount">¥0</div>
@@ -168,7 +176,8 @@
           <input type="number" name="yearTarget" inputmode="numeric" min="0"></label>
 
         <h4>データ</h4>
-        <p class="muted small">データはこの端末のブラウザに保存されます。機種変更の前などに書き出しておいてください。</p>
+        <p class="muted small">データはこの端末のブラウザに保存されます。月に1回くらい書き出して、「ファイル」アプリやiCloud Driveに保存しておくと安心です。</p>
+        <p class="small" id="backupInfo"></p>
         <div class="sheet-actions">
           <button type="button" class="btn secondary" id="exportData">書き出し</button>
           <button type="button" class="btn secondary" id="importData">読み込み</button>

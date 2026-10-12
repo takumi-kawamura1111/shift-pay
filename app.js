@@ -43,6 +43,22 @@ function save() {
   }
 }
 
+// バックアップ日時などの補助情報（書き出しファイルには含めない）
+const META_KEY = 'shift-pay-meta';
+const meta = loadMeta();
+
+function loadMeta() {
+  try {
+    return JSON.parse(localStorage.getItem(META_KEY)) || {};
+  } catch (_) {
+    return {};
+  }
+}
+
+function saveMeta() {
+  try { localStorage.setItem(META_KEY, JSON.stringify(meta)); } catch (_) { /* 保存不可の環境 */ }
+}
+
 // ===== 計算 =====
 // 時間給は1件ごとに円未満切り捨て
 const timePay = (min, hourly) => Math.floor((num(min) * num(hourly)) / 60);
@@ -158,6 +174,7 @@ function render() {
   // 勤務一覧
   $('#emptyMsg').classList.toggle('hidden', list.length > 0);
   $('#entries').innerHTML = list.map((e) => entryRow(e, s)).join('');
+  renderNotice();
 }
 
 function entryRow(e, s) {
@@ -311,6 +328,7 @@ function openSettings() {
   for (const k of NUM_SETTINGS) f[k].value = state.settings[k];
   f.meetingMode.value = state.settings.meetingMode;
   syncMeetingMode();
+  renderBackupInfo();
   settingsDialog.showModal();
 }
 
@@ -329,16 +347,112 @@ settingsForm.addEventListener('submit', () => {
   render();
 });
 
-// バックアップ
-$('#exportData').addEventListener('click', () => {
-  const blob = new Blob([JSON.stringify(state, null, 2)], { type: 'application/json' });
+// ===== バックアップ =====
+const BACKUP_INTERVAL_DAYS = 30;
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+const daysSince = (iso) => Math.floor((Date.now() - new Date(iso).getTime()) / DAY_MS);
+
+function markBackedUp() {
+  meta.lastBackup = new Date().toISOString();
+  delete meta.snoozeUntil;
+  saveMeta();
+  renderBackupInfo();
+  renderNotice();
+}
+
+function renderBackupInfo() {
+  const el = $('#backupInfo');
+  if (!meta.lastBackup) {
+    el.textContent = 'まだ書き出していません';
+    return;
+  }
+  const d = new Date(meta.lastBackup);
+  const days = daysSince(meta.lastBackup);
+  el.textContent = `前回の書き出し：${d.getFullYear()}/${d.getMonth() + 1}/${d.getDate()}` +
+    (days > 0 ? `（${days}日前）` : '（今日）');
+}
+
+function downloadFile(file) {
   const a = document.createElement('a');
-  a.href = URL.createObjectURL(blob);
-  a.download = `shift-pay-${todayStr()}.json`;
+  a.href = URL.createObjectURL(file);
+  a.download = file.name;
   document.body.appendChild(a);
   a.click();
   a.remove();
   setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+}
+
+// iPhoneでは共有シートから「ファイル」やiCloud Driveに保存できる
+async function exportData() {
+  const file = new File([JSON.stringify(state, null, 2)], `shift-pay-${todayStr()}.json`, { type: 'application/json' });
+  if (navigator.canShare && navigator.canShare({ files: [file] })) {
+    try {
+      await navigator.share({ files: [file] });
+      markBackedUp();
+    } catch (e) {
+      if (e.name !== 'AbortError') {
+        downloadFile(file);
+        markBackedUp();
+      }
+    }
+    return;
+  }
+  downloadFile(file);
+  markBackedUp();
+}
+
+$('#exportData').addEventListener('click', exportData);
+
+// ===== 画面上部のお知らせ =====
+const isIOS = /iPhone|iPad|iPod/.test(navigator.userAgent) ||
+  (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+const isStandalone = navigator.standalone === true || matchMedia('(display-mode: standalone)').matches;
+
+function backupDue() {
+  if (meta.snoozeUntil && Date.now() < meta.snoozeUntil) return false;
+  if (!meta.lastBackup) return state.entries.length >= 5;
+  return state.entries.length > 0 && daysSince(meta.lastBackup) >= BACKUP_INTERVAL_DAYS;
+}
+
+let noticeKind = null;
+
+function renderNotice() {
+  const box = $('#notice');
+  noticeKind = null;
+  if (backupDue()) {
+    noticeKind = 'backup';
+    $('#noticeText').textContent = meta.lastBackup
+      ? `前回のバックアップから${daysSince(meta.lastBackup)}日たちました。データが消えたときのために書き出しておきましょう。`
+      : 'データはこの端末にだけ保存されています。消えたときのために書き出しておきましょう。';
+    $('#noticeAction').textContent = '今すぐ書き出す';
+  } else if (isIOS && !isStandalone && !meta.installTipDismissed) {
+    noticeKind = 'install';
+    $('#noticeText').textContent =
+      'iPhoneでは、Safariで開いて 共有ボタン →「ホーム画面に追加」から使うとデータが消えにくくなります。';
+    $('#noticeAction').textContent = 'わかった';
+  }
+  box.classList.toggle('hidden', !noticeKind);
+}
+
+$('#noticeAction').addEventListener('click', () => {
+  if (noticeKind === 'backup') {
+    exportData();
+  } else {
+    meta.installTipDismissed = true;
+    saveMeta();
+    renderNotice();
+  }
+});
+
+$('#noticeClose').addEventListener('click', () => {
+  if (noticeKind === 'backup') {
+    meta.snoozeUntil = Date.now() + 3 * DAY_MS; // 3日後にまた表示
+  } else {
+    meta.installTipDismissed = true;
+  }
+  saveMeta();
+  renderNotice();
 });
 
 $('#importData').addEventListener('click', () => $('#importFile').click());
@@ -353,6 +467,7 @@ $('#importFile').addEventListener('change', async (ev) => {
     state.settings = { ...DEFAULT_SETTINGS, ...data.settings };
     state.entries = data.entries;
     save();
+    markBackedUp(); // 読み込んだファイルがそのままバックアップになる
     settingsDialog.close();
     render();
   } catch (e) {
@@ -401,6 +516,11 @@ $('#entries').addEventListener('click', (ev) => {
   let firstRun = false;
   try { firstRun = !localStorage.getItem(STORAGE_KEY); } catch (_) { /* 保存不可の環境 */ }
   if (firstRun) openSettings();
+
+  // ブラウザに「このデータを消さないで」と頼む（容量不足時の自動削除を防ぐ）
+  if (navigator.storage && navigator.storage.persist) {
+    navigator.storage.persist().catch(() => {});
+  }
 
   if ('serviceWorker' in navigator) {
     navigator.serviceWorker.register('sw.js').catch(console.error);
