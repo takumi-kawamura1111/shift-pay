@@ -374,6 +374,19 @@ input:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
 }
 .hidden { display: none !important; }
 
+.steps { margin: 8px 0; padding-left: 1.4em; line-height: 1.7; }
+.code {
+  width: 100%;
+  margin-top: 8px;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--input);
+  color: var(--text);
+  font: 12px ui-monospace, Menlo, monospace;
+}
+.chip.src { background: var(--line); color: var(--muted); }
+
 /* ===== お知らせ ===== */
 .notice {
   background: var(--card);

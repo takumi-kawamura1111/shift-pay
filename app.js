@@ -194,7 +194,7 @@ function entryRow(e, s) {
     <li data-id="${e.id}">
       <div class="entry-date"><b>${d.getDate()}</b><span class="${wdClass}">${WEEK[wd]}</span></div>
       <div class="entry-info">
-        <div class="chips">${chips.map((c) => `<span class="chip">${c}</span>`).join('') || '<span class="muted">—</span>'}</div>
+        <div class="chips">${chips.map((c) => `<span class="chip">${c}</span>`).join('') || '<span class="muted">—</span>'}${e.source === 'foresta' ? '<span class="chip src">出勤簿</span>' : ''}</div>
         ${e.memo ? `<div class="entry-memo">${escapeHtml(e.memo)}</div>` : ''}
       </div>
       <div class="entry-pay">${yen(calcEntry(e).total)}</div>
@@ -414,6 +414,109 @@ async function exportData() {
 
 $('#exportData').addEventListener('click', exportData);
 
+// ===== フォレスタ出勤簿から取り込み =====
+const BOOKMARKLET = "javascript:(function(){var s=document.createElement('script');" +
+  "s.src='https://takumi-kawamura1111.github.io/shift-pay/foresta.js?t='+Date.now();" +
+  'document.body.appendChild(s);})();';
+
+$('#copyBookmarklet').addEventListener('click', async () => {
+  const area = $('#bookmarkletCode');
+  area.value = BOOKMARKLET;
+  try {
+    await navigator.clipboard.writeText(BOOKMARKLET);
+    alert('コピーしました。ブックマークのURL欄に貼り付けてください。');
+  } catch (_) {
+    // コピーできない環境では、表示した文字を手で選択してもらう
+    area.classList.remove('hidden');
+    area.focus();
+    area.select();
+  }
+});
+
+// 出勤簿の1日分 → 勤務記録
+function forestaEntry(day) {
+  const komaMin = num(state.settings.komaMinutes);
+  const lesson = num(day.l);
+  return {
+    id: uid(),
+    date: day.d,
+    koma: komaMin ? Math.floor(lesson / komaMin) : 0,
+    lessonMin: komaMin ? lesson % komaMin : lesson,
+    officeMin: num(day.b) + num(day.j) + num(day.e), // 業務・準備・片付・夕礼
+    meetingCount: num(day.m) > 0 ? 1 : 0,
+    meetingMin: num(day.m),
+    commute: num(day.c) > 0,
+    commuteAmount: num(day.c) > 0 ? num(day.c) : '',
+    other: 0,
+    memo: '',
+    source: 'foresta',
+  };
+}
+
+function importFromHash() {
+  const m = location.hash.match(/^#import=(.+)$/);
+  if (!m) return;
+  history.replaceState(null, '', location.pathname + location.search);
+  importForesta(decodeURIComponent(m[1]));
+}
+
+// 出勤簿からコピーしたデータ（取り込み用URLでも可）を取り込む
+function importForesta(code) {
+  const raw = String(code).trim().replace(/^.*#import=/, '');
+  let payload;
+  try {
+    payload = JSON.parse(atob(decodeURIComponent(raw)));
+    if (payload.src !== 'foresta' || !/^\d{4}-\d{2}$/.test(payload.month) || !Array.isArray(payload.days)) {
+      throw new Error('形式が違います');
+    }
+  } catch (e) {
+    alert('出勤簿のデータを読み込めませんでした：' + e.message);
+    return;
+  }
+
+  const { month, days } = payload;
+  const valid = days.filter((d) => typeof d.d === 'string' && d.d.startsWith(month));
+  const imported = valid.map(forestaEntry);
+  const [y, mo] = month.split('-').map(Number);
+  const total = imported.reduce((s, e) => s + calcEntry(e).total, 0);
+
+  if (!confirm(`フォレスタ出勤簿から${y}年${mo}月の${imported.length}日分を取り込みます。\n` +
+    `給与見込み：${yen(total)}\n\n前回この月に取り込んだ分は置き換えます。`)) return;
+
+  // 同じ日に手入力した記録があれば、二重にならないよう消すか確認する
+  const dates = new Set(imported.map((e) => e.date));
+  const manualSameDay = state.entries.filter((e) => e.source !== 'foresta' && dates.has(e.date));
+  const removeManual = manualSameDay.length > 0 &&
+    confirm(`同じ日に手入力した記録が${manualSameDay.length}件あります。二重にならないよう削除しますか？\n` +
+      '（「キャンセル」で残します）');
+
+  state.entries = state.entries.filter((e) => {
+    if (!(e.date || '').startsWith(month)) return true;
+    if (e.source === 'foresta') return false;
+    return !(removeManual && dates.has(e.date));
+  });
+  state.entries.push(...imported);
+  save();
+  viewYear = y;
+  viewMonth = mo;
+  render();
+}
+
+window.addEventListener('hashchange', importFromHash);
+
+// ホーム画面のアプリはブラウザと保存場所が別なので、コピー＆貼り付けでも取り込めるようにする
+$('#pasteForesta').addEventListener('click', async () => {
+  let text = '';
+  try {
+    text = await navigator.clipboard.readText();
+  } catch (_) {
+    text = prompt('出勤簿でコピーしたデータを貼り付けてください') || '';
+  }
+  if (!text.trim()) return;
+  settingsDialog.close();
+  importForesta(text);
+});
+
 // ===== 画面上部のお知らせ =====
 const isIOS = /iPhone|iPad|iPod/.test(navigator.userAgent) ||
   (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
@@ -522,6 +625,7 @@ $('#entries').addEventListener('click', (ev) => {
   viewYear = now.getFullYear();
   viewMonth = now.getMonth() + 1;
   render();
+  importFromHash();
   // 初回は設定から
   let firstRun = false;
   try { firstRun = !localStorage.getItem(STORAGE_KEY); } catch (_) { /* 保存不可の環境 */ }
