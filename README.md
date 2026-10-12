@@ -34,3 +34,18 @@
 ## 更新したとき
 
 `sw.js` の `CACHE` の名前（例：`shift-pay-v1` → `shift-pay-v2`）を変えてからpushすると、古いキャッシュが確実に入れ替わります。
+
+## データベースに保存する（Neon + Cloudflare Worker）
+
+salary-tracker と同じ Neon のデータベースに、`shift_pay_entries`（勤務記録）と `shift_pay_settings`（設定）のテーブルを作って保存します（テーブルは初回に自動で作られます）。
+アプリから直接データベースにはつながず、間に中継役の Cloudflare Worker（`worker/worker.js`）を置きます。データベースのパスワードは Worker の中だけに保存します。
+
+1. Cloudflare で **Workers & Pages → Create → Worker**（Hello World）を作る。名前は例：`shift-pay-api`
+2. **Edit code** で中身を `worker/worker.js` に置き換えて **Deploy**
+3. Worker の **Settings → Variables and Secrets** に次を追加（種類は Secret）
+   - `DATABASE_URL`：salary-tracker と同じ Neon の接続文字列
+   - `APP_PASSPHRASE`：アプリに入れる合言葉（長めのものにする）
+4. アプリの 設定 →「データベースに保存」に Worker のURL（`https://shift-pay-api.〇〇.workers.dev`）と合言葉を入れて「接続して同期」
+
+- 変更はまず端末に保存し、裏でデータベースに送ります。オフラインのときは、つながったときに送ります。
+- 同じ記録を2台で変更した場合は、あとから変更したほうが残ります。

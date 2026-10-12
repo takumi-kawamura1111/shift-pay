@@ -1,6 +1,6 @@
 // オフラインでも開けるようにするService Worker
 // 通信できるときは最新版を取得し、できないときはキャッシュを使う
-const CACHE = 'shift-pay-v5';
+const CACHE = 'shift-pay-v6';
 const ASSETS = [
   './',
   'index.html',

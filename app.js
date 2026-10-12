@@ -58,6 +58,45 @@ function saveMeta() {
   try { localStorage.setItem(META_KEY, JSON.stringify(meta)); } catch (_) { /* 保存不可の環境 */ }
 }
 
+// データベースへの送信待ち（電波がないときもここに貯めておき、つながったら送る）
+const OUTBOX_KEY = 'shift-pay-outbox';
+const outbox = loadOutbox();
+
+function loadOutbox() {
+  try {
+    const o = JSON.parse(localStorage.getItem(OUTBOX_KEY));
+    if (o && typeof o.entries === 'object') return o;
+  } catch (_) { /* 壊れていたら作り直す */ }
+  return { entries: {}, settings: null };
+}
+
+function saveOutbox() {
+  try { localStorage.setItem(OUTBOX_KEY, JSON.stringify(outbox)); } catch (_) { /* 保存不可の環境 */ }
+}
+
+const nowIso = () => new Date().toISOString();
+
+function queueEntry(e, updatedAt = nowIso()) {
+  e.updatedAt = updatedAt;
+  outbox.entries[e.id] = { id: e.id, data: e, deleted: false, updatedAt };
+}
+
+function queueDelete(id) {
+  outbox.entries[id] = { id, data: null, deleted: true, updatedAt: nowIso() };
+}
+
+function queueSettings(updatedAt = nowIso()) {
+  state.settingsUpdatedAt = updatedAt;
+  outbox.settings = { data: state.settings, updatedAt };
+}
+
+// 変更を端末に保存し、データベースへの送信を予約する
+function commit() {
+  save();
+  saveOutbox();
+  scheduleSync();
+}
+
 // ===== 計算 =====
 // 時間給は1件ごとに円未満切り捨て
 const timePay = (min, hourly) => Math.floor((num(min) * num(hourly)) / 60);
@@ -278,11 +317,16 @@ entryForm.addEventListener('submit', (ev) => {
   if (!data.date) { ev.preventDefault(); return; }
   if (editingId) {
     const i = state.entries.findIndex((e) => e.id === editingId);
-    if (i >= 0) state.entries[i] = { ...state.entries[i], ...data };
+    if (i >= 0) {
+      state.entries[i] = { ...state.entries[i], ...data };
+      queueEntry(state.entries[i]);
+    }
   } else {
-    state.entries.push({ id: uid(), ...data });
+    const entry = { id: uid(), ...data };
+    state.entries.push(entry);
+    queueEntry(entry);
   }
-  save();
+  commit();
   // 保存した日付の月を表示する
   const [y, m] = data.date.split('-').map(Number);
   viewYear = y; viewMonth = m;
@@ -292,7 +336,8 @@ entryForm.addEventListener('submit', (ev) => {
 $('#deleteEntry').addEventListener('click', () => {
   if (!editingId || !confirm('この勤務記録を削除しますか？')) return;
   state.entries = state.entries.filter((e) => e.id !== editingId);
-  save();
+  queueDelete(editingId);
+  commit();
   entryDialog.close();
   render();
 });
@@ -330,6 +375,9 @@ function openSettings() {
   syncMeetingMode();
   updateKomaRatePreview();
   renderBackupInfo();
+  f.syncUrl.value = meta.syncUrl || '';
+  f.syncToken.value = meta.syncToken || '';
+  renderSyncStatus();
   settingsDialog.showModal();
 }
 
@@ -353,7 +401,8 @@ settingsForm.addEventListener('submit', () => {
   const f = settingsForm.elements;
   for (const k of NUM_SETTINGS) state.settings[k] = num(f[k].value);
   state.settings.meetingMode = f.meetingMode.value;
-  save();
+  queueSettings();
+  commit();
   render();
 });
 
@@ -491,12 +540,14 @@ function importForesta(code) {
       '（「キャンセル」で残します）');
 
   state.entries = state.entries.filter((e) => {
-    if (!(e.date || '').startsWith(month)) return true;
-    if (e.source === 'foresta') return false;
-    return !(removeManual && dates.has(e.date));
+    const keep = !(e.date || '').startsWith(month) ||
+      (e.source !== 'foresta' && !(removeManual && dates.has(e.date)));
+    if (!keep) queueDelete(e.id);
+    return keep;
   });
+  for (const e of imported) queueEntry(e);
   state.entries.push(...imported);
-  save();
+  commit();
   viewYear = y;
   viewMonth = mo;
   render();
@@ -523,6 +574,7 @@ const isIOS = /iPhone|iPad|iPod/.test(navigator.userAgent) ||
 const isStandalone = navigator.standalone === true || matchMedia('(display-mode: standalone)').matches;
 
 function backupDue() {
+  if (syncEnabled()) return false; // データベースに保存しているので不要
   if (meta.snoozeUntil && Date.now() < meta.snoozeUntil) return false;
   if (!meta.lastBackup) return state.entries.length >= 5;
   return state.entries.length > 0 && daysSince(meta.lastBackup) >= BACKUP_INTERVAL_DAYS;
@@ -533,7 +585,12 @@ let noticeKind = null;
 function renderNotice() {
   const box = $('#notice');
   noticeKind = null;
-  if (backupDue()) {
+  if (syncEnabled() && meta.syncError) {
+    noticeKind = 'sync';
+    $('#noticeText').textContent =
+      `データベースに保存できていません（${meta.syncError}）。変更はこの端末に残っていて、つながったら送ります。`;
+    $('#noticeAction').textContent = 'もう一度送る';
+  } else if (backupDue()) {
     noticeKind = 'backup';
     $('#noticeText').textContent = meta.lastBackup
       ? `前回のバックアップから${daysSince(meta.lastBackup)}日たちました。データが消えたときのために書き出しておきましょう。`
@@ -549,7 +606,9 @@ function renderNotice() {
 }
 
 $('#noticeAction').addEventListener('click', () => {
-  if (noticeKind === 'backup') {
+  if (noticeKind === 'sync') {
+    syncNow();
+  } else if (noticeKind === 'backup') {
     exportData();
   } else {
     meta.installTipDismissed = true;
@@ -559,6 +618,10 @@ $('#noticeAction').addEventListener('click', () => {
 });
 
 $('#noticeClose').addEventListener('click', () => {
+  if (noticeKind === 'sync') {
+    $('#notice').classList.add('hidden');
+    return;
+  }
   if (noticeKind === 'backup') {
     meta.snoozeUntil = Date.now() + 3 * DAY_MS; // 3日後にまた表示
   } else {
@@ -577,15 +640,159 @@ $('#importFile').addEventListener('change', async (ev) => {
     const data = JSON.parse(await file.text());
     if (!Array.isArray(data.entries)) throw new Error('形式が違います');
     if (!confirm(`${data.entries.length}件の勤務記録を読み込みます。今のデータは上書きされます。よろしいですか？`)) return;
+    for (const e of state.entries) queueDelete(e.id);
     state.settings = { ...DEFAULT_SETTINGS, ...data.settings };
-    state.entries = data.entries;
-    save();
+    state.entries = data.entries.map((e) => ({ ...e, id: e.id || uid() }));
+    for (const e of state.entries) queueEntry(e);
+    queueSettings();
+    commit();
     markBackedUp(); // 読み込んだファイルがそのままバックアップになる
     settingsDialog.close();
     render();
   } catch (e) {
     alert('読み込めませんでした：' + e.message);
   }
+});
+
+// ===== データベース（Neon）との同期 =====
+const syncEnabled = () => !!(meta.syncUrl && meta.syncToken);
+let syncing = false;
+let syncAgain = false;
+let syncTimer = null;
+
+function scheduleSync(delay = 800) {
+  if (!syncEnabled()) return;
+  clearTimeout(syncTimer);
+  syncTimer = setTimeout(syncNow, delay);
+}
+
+async function api(path, options = {}) {
+  const res = await fetch(meta.syncUrl.replace(/\/+$/, '') + path, {
+    ...options,
+    headers: { Authorization: 'Bearer ' + meta.syncToken, 'Content-Type': 'application/json' },
+  });
+  const body = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(body.error || `通信エラー ${res.status}`);
+  return body;
+}
+
+async function syncNow() {
+  if (!syncEnabled()) return;
+  if (syncing) { syncAgain = true; return; }
+  syncing = true;
+  renderSyncStatus('同期中…');
+  const sending = { entries: Object.values(outbox.entries), settings: outbox.settings };
+  try {
+    const body = await api('/sync', { method: 'POST', body: JSON.stringify(sending) });
+    // 送った分を送信待ちから外す（送信中にさらに変更された分は残す）
+    for (const s of sending.entries) {
+      if (outbox.entries[s.id] && outbox.entries[s.id].updatedAt === s.updatedAt) delete outbox.entries[s.id];
+    }
+    if (sending.settings && outbox.settings && outbox.settings.updatedAt === sending.settings.updatedAt) {
+      outbox.settings = null;
+    }
+    saveOutbox();
+    applyServerData(body);
+    meta.lastSync = nowIso();
+    meta.syncError = null;
+  } catch (e) {
+    meta.syncError = e.message === 'Failed to fetch' || e.message === 'Load failed' ? 'オフライン' : e.message;
+  } finally {
+    saveMeta();
+    syncing = false;
+    renderSyncStatus();
+    renderNotice();
+    if (syncAgain) { syncAgain = false; scheduleSync(0); }
+  }
+}
+
+// データベースの内容を画面に反映（まだ送れていない端末側の変更は優先する）
+function applyServerData(body) {
+  const map = new Map();
+  for (const r of body.entries || []) {
+    if (!r.deleted && r.data) map.set(r.id, { ...r.data, id: r.id, updatedAt: r.updatedAt });
+  }
+  for (const p of Object.values(outbox.entries)) {
+    if (p.deleted) map.delete(p.id);
+    else map.set(p.id, p.data);
+  }
+  state.entries = [...map.values()];
+  if (body.settings && !outbox.settings) {
+    state.settings = { ...DEFAULT_SETTINGS, ...body.settings.data };
+    state.settingsUpdatedAt = body.settings.updatedAt;
+  }
+  save();
+  render();
+}
+
+function renderSyncStatus(text) {
+  const el = $('#syncStatus');
+  if (!el) return;
+  if (text) { el.textContent = text; return; }
+  if (!syncEnabled()) {
+    el.textContent = '未接続（データはこの端末だけに保存されています）';
+    return;
+  }
+  const pending = Object.keys(outbox.entries).length + (outbox.settings ? 1 : 0);
+  const last = meta.lastSync ? new Date(meta.lastSync) : null;
+  el.textContent = [
+    last ? `最終同期：${last.getMonth() + 1}/${last.getDate()} ${pad(last.getHours())}:${pad(last.getMinutes())}` : 'まだ同期していません',
+    pending ? `未送信 ${pending}件` : '',
+    meta.syncError ? `エラー：${meta.syncError}` : '',
+  ].filter(Boolean).join(' ・ ');
+}
+
+$('#connectSync').addEventListener('click', async () => {
+  const f = settingsForm.elements;
+  const url = f.syncUrl.value.trim();
+  const token = f.syncToken.value;
+  if (!/^https:\/\//.test(url) || !token) {
+    alert('中継役のURL（https://〜）と合言葉を入れてください。');
+    return;
+  }
+  const wasEnabled = syncEnabled();
+  meta.syncUrl = url;
+  meta.syncToken = token;
+  renderSyncStatus('接続を確認中…');
+  try {
+    const server = await api('/data');
+    if (!wasEnabled) {
+      // 初めて接続する端末：この端末の記録をデータベースに足す
+      // （同じ記録がデータベースにもあれば、新しく変更したほうが残る）
+      for (const e of state.entries) {
+        if (!outbox.entries[e.id]) queueEntry(e, e.updatedAt || '2000-01-01T00:00:00.000Z');
+      }
+      if (!server.settings && !outbox.settings) queueSettings(state.settingsUpdatedAt || '2000-01-01T00:00:00.000Z');
+      saveOutbox();
+    }
+    meta.syncError = null;
+    saveMeta();
+    await syncNow();
+    if (!meta.syncError) alert('データベースにつながりました。');
+  } catch (e) {
+    meta.syncUrl = '';
+    meta.syncToken = '';
+    saveMeta();
+    renderSyncStatus();
+    alert('接続できませんでした：' + e.message);
+  }
+});
+
+$('#disconnectSync').addEventListener('click', () => {
+  if (!syncEnabled() || !confirm('この端末とデータベースの接続を解除しますか？（データは消えません）')) return;
+  meta.syncUrl = '';
+  meta.syncToken = '';
+  meta.syncError = null;
+  saveMeta();
+  settingsForm.elements.syncUrl.value = '';
+  settingsForm.elements.syncToken.value = '';
+  renderSyncStatus();
+  renderNotice();
+});
+
+window.addEventListener('online', () => syncNow());
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible') syncNow();
 });
 
 // ===== 共通イベント =====
@@ -626,6 +833,7 @@ $('#entries').addEventListener('click', (ev) => {
   viewMonth = now.getMonth() + 1;
   render();
   importFromHash();
+  syncNow();
   // 初回は設定から
   let firstRun = false;
   try { firstRun = !localStorage.getItem(STORAGE_KEY); } catch (_) { /* 保存不可の環境 */ }

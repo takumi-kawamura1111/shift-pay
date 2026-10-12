@@ -264,7 +264,7 @@ dialog.sheet[open] { animation: slide-up .22s ease-out; }
 }
 .field small { font-weight: 400; color: var(--muted); margin-left: 6px; }
 
-input[type="number"], input[type="text"], input[type="date"] {
+input[type="number"], input[type="text"], input[type="date"], input[type="url"], input[type="password"] {
   width: 100%;
   min-height: 46px;
   padding: 10px 12px;

@@ -174,6 +174,18 @@
         <label class="field"><span>年収の上限・目標（円）<small>交通費も含めて集計</small></span>
           <input type="number" name="yearTarget" inputmode="numeric" min="0"></label>
 
+        <h4>データベースに保存</h4>
+        <p class="muted small">salary-trackerと同じNeonのデータベースに保存します。中継役（Cloudflare Worker）のURLと合言葉を入れてください。機種変更しても、同じURLと合言葉で元に戻せます。</p>
+        <label class="field"><span>中継役のURL</span>
+          <input type="text" inputmode="url" name="syncUrl" placeholder="https://shift-pay-api.〇〇.workers.dev" autocomplete="off" autocapitalize="off" spellcheck="false"></label>
+        <label class="field"><span>合言葉</span>
+          <input type="password" name="syncToken" autocomplete="off"></label>
+        <p class="small" id="syncStatus"></p>
+        <div class="sheet-actions">
+          <button type="button" class="btn primary" id="connectSync">接続して同期</button>
+          <button type="button" class="btn" id="disconnectSync">解除</button>
+        </div>
+
         <h4>フォレスタ出勤簿から取り込み</h4>
         <p class="muted small">出勤簿のカレンダー画面で「ブックマークレット」を実行すると、表示中の月の勤務をまとめて取り込めます。</p>
         <ol class="steps small">
