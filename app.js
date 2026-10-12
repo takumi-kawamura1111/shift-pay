@@ -147,24 +147,24 @@ function render() {
     .map(([label, v]) => `<div><dt>${label}</dt><dd>${yen(v)}</dd></div>`)
     .join('');
 
-  // 年間累計（交通費を除く）
+  // 年間累計（交通費を含む）
   const yearList = state.entries.filter((e) => (e.date || '').startsWith(`${viewYear}-`));
   const y = sumEntries(yearList);
-  const taxable = y.total - y.commute;
+  const yearTotal = y.total;
   const target = num(s.yearTarget);
-  $('#yearTitle').textContent = `${viewYear}年の累計（交通費除く）`;
-  $('#yearAmount').textContent = yen(taxable);
+  $('#yearTitle').textContent = `${viewYear}年の累計（交通費込み）`;
+  $('#yearAmount').textContent = yen(yearTotal);
   const bar = $('#yearBar');
   bar.classList.remove('warn', 'over');
   if (target) {
-    const ratio = taxable / target;
+    const ratio = yearTotal / target;
     $('#yearTarget').textContent = `目標 ${yen(target)}`;
     bar.style.width = Math.min(100, ratio * 100) + '%';
     if (ratio >= 1) bar.classList.add('over');
     else if (ratio >= 0.85) bar.classList.add('warn');
     $('#yearNote').textContent = ratio >= 1
-      ? `目標を ${yen(taxable - target)} 超えています`
-      : `残り ${yen(target - taxable)}（${Math.floor(ratio * 100)}%）`;
+      ? `目標を ${yen(yearTotal - target)} 超えています`
+      : `残り ${yen(target - yearTotal)}（${Math.floor(ratio * 100)}%）`;
   } else {
     $('#yearTarget').textContent = '';
     bar.style.width = '0';
