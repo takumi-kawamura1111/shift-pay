@@ -4,9 +4,8 @@
 const STORAGE_KEY = 'shift-pay-v1';
 
 const DEFAULT_SETTINGS = {
-  komaRate: 1500,      // 1コマの給与
-  komaMinutes: 80,     // 1コマの時間（勤務時間の集計用）
-  lessonHourly: 1500,  // 授業時間で入力する場合の時給
+  lessonHourly: 1500,  // 授業の時給（コマ給はこれを1コマの時間で換算）
+  komaMinutes: 80,     // 1コマの時間
   officeHourly: 1100,  // 事務の時給
   meetingMode: 'fixed', // 'fixed' = 1回ごと / 'hourly' = 時給
   meetingRate: 1000,
@@ -64,7 +63,8 @@ function saveMeta() {
 const timePay = (min, hourly) => Math.floor((num(min) * num(hourly)) / 60);
 
 function calcEntry(e, s = state.settings) {
-  const lesson = num(e.koma) * num(s.komaRate) + timePay(e.lessonMin, s.lessonHourly);
+  // コマも授業時間も時給で換算（1日分をまとめて円未満切り捨て）
+  const lesson = timePay(num(e.koma) * num(s.komaMinutes) + num(e.lessonMin), s.lessonHourly);
   const office = timePay(e.officeMin, s.officeHourly);
   const meeting = s.meetingMode === 'hourly'
     ? timePay(e.meetingMin, s.meetingHourly)
@@ -321,13 +321,14 @@ document.querySelectorAll('.stepper').forEach((st) => {
 // ===== 設定ダイアログ =====
 const settingsDialog = $('#settingsDialog');
 const settingsForm = $('#settingsForm');
-const NUM_SETTINGS = ['komaRate', 'komaMinutes', 'lessonHourly', 'officeHourly', 'meetingRate', 'meetingHourly', 'commute', 'yearTarget'];
+const NUM_SETTINGS = ['komaMinutes', 'lessonHourly', 'officeHourly', 'meetingRate', 'meetingHourly', 'commute', 'yearTarget'];
 
 function openSettings() {
   const f = settingsForm.elements;
   for (const k of NUM_SETTINGS) f[k].value = state.settings[k];
   f.meetingMode.value = state.settings.meetingMode;
   syncMeetingMode();
+  updateKomaRatePreview();
   renderBackupInfo();
   settingsDialog.showModal();
 }
@@ -338,7 +339,16 @@ function syncMeetingMode() {
   $('#meetingHourlyField').classList.toggle('hidden', !hourly);
 }
 
+function updateKomaRatePreview() {
+  const f = settingsForm.elements;
+  const rate = (num(f.lessonHourly.value) * num(f.komaMinutes.value)) / 60;
+  const shown = Number.isInteger(rate) ? rate.toLocaleString('ja-JP')
+    : rate.toLocaleString('ja-JP', { maximumFractionDigits: 2 });
+  $('#komaRatePreview').textContent = `→ 1コマあたり ¥${shown}`;
+}
+
 settingsForm.addEventListener('change', syncMeetingMode);
+settingsForm.addEventListener('input', updateKomaRatePreview);
 settingsForm.addEventListener('submit', () => {
   const f = settingsForm.elements;
   for (const k of NUM_SETTINGS) state.settings[k] = num(f[k].value);

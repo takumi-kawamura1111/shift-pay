@@ -84,7 +84,7 @@
         </div>
 
         <label class="field">
-          <span>授業時間（分）<small>時給制の授業</small></span>
+          <span>コマ以外の授業（分）<small>講習など</small></span>
           <input type="number" name="lessonMin" inputmode="numeric" min="0" step="5" placeholder="0">
         </label>
 
@@ -145,12 +145,11 @@
       </div>
       <div class="sheet-body">
         <h4>授業</h4>
-        <label class="field"><span>1コマの給与（円）</span>
-          <input type="number" name="komaRate" inputmode="numeric" min="0"></label>
-        <label class="field"><span>1コマの時間（分）<small>勤務時間の集計用</small></span>
-          <input type="number" name="komaMinutes" inputmode="numeric" min="0"></label>
-        <label class="field"><span>授業の時給（円）<small>授業時間で入力する場合</small></span>
+        <label class="field"><span>授業の時給（円）</span>
           <input type="number" name="lessonHourly" inputmode="numeric" min="0"></label>
+        <label class="field"><span>1コマの時間（分）</span>
+          <input type="number" name="komaMinutes" inputmode="numeric" min="0"></label>
+        <p class="small muted" id="komaRatePreview"></p>
 
         <h4>事務・会議</h4>
         <label class="field"><span>事務の時給（円）</span>
