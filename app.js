@@ -8,8 +8,7 @@ const DEFAULT_SETTINGS = {
   lessonHourly: 1500, // 授業の時給
   komaMinutes: 80,    // 1コマの時間
   commute: 0,         // 1日あたりの交通費
-  meeting: 0,         // 会議給
-  meetingUnit: 'month', // 'day' = 出勤1日ごと / 'month' = 1か月ごと
+  meetingHourly: 0,   // 会議の時給
   office: 0,          // 事務給
   officeUnit: 'day',
 };
@@ -21,11 +20,17 @@ function load() {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (raw) {
       const data = JSON.parse(raw);
+      // 今の版で使う項目だけ取り出す（前の版の会議給などは捨てる）
+      const settings = { ...DEFAULT_SETTINGS };
+      for (const k of Object.keys(DEFAULT_SETTINGS)) {
+        if (data.settings && data.settings[k] !== undefined) settings[k] = data.settings[k];
+      }
       return {
-        settings: { ...DEFAULT_SETTINGS, ...data.settings },
+        settings,
         days: num(data.days),
         koma: num(data.koma),
-        configured: true,
+        meetingMin: num(data.meetingMin),
+        configured: data.settings && data.settings.meetingHourly !== undefined,
       };
     }
     const old = JSON.parse(localStorage.getItem(OLD_STORAGE_KEY) || 'null');
@@ -35,30 +40,31 @@ function load() {
         settings: { ...DEFAULT_SETTINGS, lessonHourly, komaMinutes, commute },
         days: 0,
         koma: 0,
+        meetingMin: 0,
         configured: false,
       };
     }
   } catch (e) {
     console.error(e);
   }
-  return { settings: { ...DEFAULT_SETTINGS }, days: 0, koma: 0, configured: false };
+  return { settings: { ...DEFAULT_SETTINGS }, days: 0, koma: 0, meetingMin: 0, configured: false };
 }
 
 function save() {
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify({
-      settings: state.settings, days: state.days, koma: state.koma,
+      settings: state.settings, days: state.days, koma: state.koma, meetingMin: state.meetingMin,
     }));
   } catch (_) { /* 保存できない環境でも計算はできる */ }
 }
 
 // ===== 計算 =====
-function calc(days, koma, s = state.settings) {
+function calc(days, koma, meetingMin, s = state.settings) {
   const lesson = Math.floor((num(koma) * num(s.komaMinutes) * num(s.lessonHourly)) / 60);
+  const meeting = Math.floor((num(meetingMin) * num(s.meetingHourly)) / 60);
   const commute = num(days) * num(s.commute);
   // 月額は出勤した月だけ数える
   const perUnit = (amount, unit) => (unit === 'day' ? num(days) * num(amount) : (num(days) > 0 ? num(amount) : 0));
-  const meeting = perUnit(s.meeting, s.meetingUnit);
   const office = perUnit(s.office, s.officeUnit);
   return { lesson, meeting, office, commute, total: lesson + meeting + office + commute };
 }
@@ -81,7 +87,7 @@ function fmtMinutes(min) {
 // ===== 画面 =====
 function render() {
   const s = state.settings;
-  const c = calc(state.days, state.koma);
+  const c = calc(state.days, state.koma, state.meetingMin);
   $('#totalAmount').textContent = yen(c.total);
   $('#totalSub').textContent =
     `出勤 ${state.days}日 ・ ${state.koma}コマ（授業 ${fmtMinutes(state.koma * num(s.komaMinutes))}）`;
@@ -89,7 +95,7 @@ function render() {
   const unitLabel = (unit) => (unit === 'day' ? '1日ごと' : '月額');
   const rows = [
     ['授業給', c.lesson],
-    [`会議給<small>${unitLabel(s.meetingUnit)}</small>`, c.meeting],
+    [`会議給<small>${fmtMinutes(state.meetingMin)}</small>`, c.meeting],
     [`事務給<small>${unitLabel(s.officeUnit)}</small>`, c.office],
     ['交通費', c.commute],
   ];
@@ -99,7 +105,7 @@ function render() {
 }
 
 // 出勤日数・コマ数の入力
-for (const id of ['days', 'koma']) {
+for (const id of ['days', 'koma', 'meetingMin']) {
   const input = $('#' + id);
   input.value = state[id];
   input.addEventListener('input', () => {
@@ -120,12 +126,11 @@ document.querySelectorAll('.stepper button').forEach((b) => {
 // ===== 設定 =====
 const settingsDialog = $('#settingsDialog');
 const settingsForm = $('#settingsForm');
-const NUM_SETTINGS = ['lessonHourly', 'komaMinutes', 'commute', 'meeting', 'office'];
+const NUM_SETTINGS = ['lessonHourly', 'komaMinutes', 'commute', 'meetingHourly', 'office'];
 
 function openSettings() {
   const f = settingsForm.elements;
   for (const k of NUM_SETTINGS) f[k].value = state.settings[k];
-  f.meetingUnit.value = state.settings.meetingUnit;
   f.officeUnit.value = state.settings.officeUnit;
   updateKomaRatePreview();
   settingsDialog.showModal();
@@ -143,7 +148,6 @@ settingsForm.addEventListener('input', updateKomaRatePreview);
 settingsForm.addEventListener('submit', () => {
   const f = settingsForm.elements;
   for (const k of NUM_SETTINGS) state.settings[k] = num(f[k].value);
-  state.settings.meetingUnit = f.meetingUnit.value;
   state.settings.officeUnit = f.officeUnit.value;
   state.configured = true;
   save();

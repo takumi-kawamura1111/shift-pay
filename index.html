@@ -43,6 +43,10 @@
           <button type="button" data-target="koma" data-step="1">＋</button>
         </div>
       </div>
+      <label class="field">
+        <span>会議の時間（分）<small>その月の合計</small></span>
+        <input type="number" id="meetingMin" inputmode="numeric" min="0" step="5" value="0">
+      </label>
     </section>
 
     <section class="card">
@@ -73,12 +77,8 @@
           <input type="number" name="commute" inputmode="numeric" min="0"></label>
 
         <h4>会議給</h4>
-        <label class="field"><span>金額（円）</span>
-          <input type="number" name="meeting" inputmode="numeric" min="0"></label>
-        <div class="segmented">
-          <label><input type="radio" name="meetingUnit" value="day"><span>出勤1日ごと</span></label>
-          <label><input type="radio" name="meetingUnit" value="month"><span>1か月ごと</span></label>
-        </div>
+        <label class="field"><span>会議の時給（円）</span>
+          <input type="number" name="meetingHourly" inputmode="numeric" min="0"></label>
 
         <h4>事務給</h4>
         <label class="field"><span>金額（円）</span>
