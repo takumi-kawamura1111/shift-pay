@@ -63,6 +63,7 @@ button { font: inherit; color: inherit; cursor: pointer; }
 }
 .icon-btn:active { background: var(--line); }
 .icon-btn.gear { margin-left: auto; font-size: 22px; }
+.app-title { font-size: 18px; font-weight: 700; padding-left: 4px; }
 .month-label {
   border: none;
   background: none;

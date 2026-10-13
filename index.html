@@ -7,7 +7,7 @@
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="default">
   <meta name="apple-mobile-web-app-title" content="給与見込み">
-  <title>シフト給与計算</title>
+  <title>給与見込み計算</title>
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="icon" href="icon.svg" type="image/svg+xml">
   <link rel="apple-touch-icon" href="icon-180.png">
@@ -15,125 +15,42 @@
 </head>
 <body>
   <header class="topbar">
-    <button class="icon-btn" id="prevMonth" aria-label="前の月">‹</button>
-    <button class="month-label" id="monthLabel" aria-label="今月に戻る"></button>
-    <button class="icon-btn" id="nextMonth" aria-label="次の月">›</button>
+    <span class="app-title">給与見込み計算</span>
     <button class="icon-btn gear" id="openSettings" aria-label="設定">⚙︎</button>
   </header>
 
   <main>
-    <div class="notice hidden" id="notice" role="status">
-      <p id="noticeText"></p>
-      <div class="notice-actions">
-        <button type="button" class="btn primary" id="noticeAction"></button>
-        <button type="button" class="btn" id="noticeClose">あとで</button>
-      </div>
-    </div>
-
     <section class="card total-card">
-      <div class="total-caption">今月の給与見込み</div>
+      <div class="total-caption">給与の目安</div>
       <div class="total-amount" id="totalAmount">¥0</div>
       <div class="total-sub" id="totalSub"></div>
     </section>
 
     <section class="card">
+      <div class="field">
+        <span>出勤日数</span>
+        <div class="stepper">
+          <button type="button" data-target="days" data-step="-1">−</button>
+          <input type="number" id="days" inputmode="numeric" min="0" step="1" value="0">
+          <button type="button" data-target="days" data-step="1">＋</button>
+        </div>
+      </div>
+      <div class="field">
+        <span>コマ数</span>
+        <div class="stepper">
+          <button type="button" data-target="koma" data-step="-1">−</button>
+          <input type="number" id="koma" inputmode="numeric" min="0" step="1" value="0">
+          <button type="button" data-target="koma" data-step="1">＋</button>
+        </div>
+      </div>
+    </section>
+
+    <section class="card">
       <h2>内訳</h2>
       <dl class="breakdown" id="breakdown"></dl>
-    </section>
-
-    <section class="card">
-      <h2 id="yearTitle">年間累計</h2>
-      <div class="year-row">
-        <span id="yearAmount">¥0</span>
-        <span class="muted" id="yearTarget"></span>
-      </div>
-      <div class="progress"><div class="progress-bar" id="yearBar"></div></div>
-      <p class="muted small" id="yearNote"></p>
-    </section>
-
-    <section class="card">
-      <h2>勤務記録</h2>
-      <ul class="entries" id="entries"></ul>
-      <p class="empty" id="emptyMsg">右下の「＋」から勤務を追加してください</p>
+      <p class="muted small">税金・社会保険料は引いていない目安です。</p>
     </section>
   </main>
-
-  <button class="fab" id="addEntry" aria-label="勤務を追加">＋</button>
-
-  <!-- 勤務入力 -->
-  <dialog id="entryDialog" class="sheet">
-    <form id="entryForm" method="dialog">
-      <div class="sheet-head">
-        <button type="button" class="text-btn" data-close>キャンセル</button>
-        <h3 id="entryTitle">勤務を追加</h3>
-        <button type="submit" class="text-btn strong">保存</button>
-      </div>
-      <div class="sheet-body">
-        <label class="field">
-          <span>日付</span>
-          <input type="date" name="date" required>
-        </label>
-
-        <div class="field">
-          <span>コマ数</span>
-          <div class="stepper" data-name="koma">
-            <button type="button" data-step="-1">−</button>
-            <input type="number" name="koma" inputmode="numeric" min="0" step="1" value="0">
-            <button type="button" data-step="1">＋</button>
-          </div>
-        </div>
-
-        <label class="field">
-          <span>コマ以外の授業（分）<small>講習など</small></span>
-          <input type="number" name="lessonMin" inputmode="numeric" min="0" step="5" placeholder="0">
-        </label>
-
-        <label class="field">
-          <span>事務・その他勤務（分）</span>
-          <input type="number" name="officeMin" inputmode="numeric" min="0" step="5" placeholder="0">
-        </label>
-
-        <div class="field" id="meetingCountField">
-          <span>会議（回）</span>
-          <div class="stepper" data-name="meetingCount">
-            <button type="button" data-step="-1">−</button>
-            <input type="number" name="meetingCount" inputmode="numeric" min="0" step="1" value="0">
-            <button type="button" data-step="1">＋</button>
-          </div>
-        </div>
-
-        <label class="field" id="meetingMinField">
-          <span>会議時間（分）</span>
-          <input type="number" name="meetingMin" inputmode="numeric" min="0" step="5" placeholder="0">
-        </label>
-
-        <div class="field">
-          <label class="switch-row">
-            <span>交通費あり</span>
-            <input type="checkbox" name="commute" class="switch">
-          </label>
-          <input type="number" name="commuteAmount" inputmode="numeric" min="0" placeholder="既定額">
-        </div>
-
-        <label class="field">
-          <span>その他手当（円）</span>
-          <input type="number" name="other" inputmode="numeric" min="0" placeholder="0">
-        </label>
-
-        <label class="field">
-          <span>メモ</span>
-          <input type="text" name="memo" placeholder="例：講習・振替など">
-        </label>
-
-        <div class="preview" id="entryPreview"></div>
-
-        <div class="sheet-actions">
-          <button type="button" class="btn secondary" id="duplicateEntry">別の日にコピー</button>
-          <button type="button" class="btn danger" id="deleteEntry">削除</button>
-        </div>
-      </div>
-    </form>
-  </dialog>
 
   <!-- 設定 -->
   <dialog id="settingsDialog" class="sheet">
@@ -151,54 +68,24 @@
           <input type="number" name="komaMinutes" inputmode="numeric" min="0"></label>
         <p class="small muted" id="komaRatePreview"></p>
 
-        <h4>事務・会議</h4>
-        <label class="field"><span>事務の時給（円）</span>
-          <input type="number" name="officeHourly" inputmode="numeric" min="0"></label>
-        <div class="field">
-          <span>会議給の計算方法</span>
-          <div class="segmented">
-            <label><input type="radio" name="meetingMode" value="fixed"><span>1回ごと</span></label>
-            <label><input type="radio" name="meetingMode" value="hourly"><span>時給</span></label>
-          </div>
-        </div>
-        <label class="field" id="meetingRateField"><span>会議給 1回あたり（円）</span>
-          <input type="number" name="meetingRate" inputmode="numeric" min="0"></label>
-        <label class="field" id="meetingHourlyField"><span>会議の時給（円）</span>
-          <input type="number" name="meetingHourly" inputmode="numeric" min="0"></label>
-
         <h4>交通費</h4>
         <label class="field"><span>1日あたりの交通費（往復・円）</span>
           <input type="number" name="commute" inputmode="numeric" min="0"></label>
 
-        <h4>年間目標</h4>
-        <label class="field"><span>年収の上限・目標（円）<small>交通費も含めて集計</small></span>
-          <input type="number" name="yearTarget" inputmode="numeric" min="0"></label>
-
-        <h4>フォレスタ出勤簿から取り込み</h4>
-        <p class="muted small">出勤簿のカレンダー画面で「ブックマークレット」を実行すると、表示中の月の勤務をまとめて取り込めます。</p>
-        <ol class="steps small">
-          <li>下の「コピー」を押す</li>
-          <li>このページをブックマークに追加し、名前を「給与見込みに送る」にする</li>
-          <li>ブックマークを編集して、URL欄をコピーした内容に置き換える</li>
-          <li>出勤簿のカレンダー画面を開き、そのブックマークをタップ</li>
-          <li>「データをコピー」を押し、このアプリに戻って「コピーしたデータを取り込む」を押す</li>
-        </ol>
-        <div class="sheet-actions">
-          <button type="button" class="btn secondary" id="copyBookmarklet">ブックマークレットをコピー</button>
+        <h4>会議給</h4>
+        <label class="field"><span>金額（円）</span>
+          <input type="number" name="meeting" inputmode="numeric" min="0"></label>
+        <div class="segmented">
+          <label><input type="radio" name="meetingUnit" value="day"><span>出勤1日ごと</span></label>
+          <label><input type="radio" name="meetingUnit" value="month"><span>1か月ごと</span></label>
         </div>
-        <p class="muted small">出勤簿の画面で「データをコピー」を押したら、ここで取り込みます。</p>
-        <div class="sheet-actions">
-          <button type="button" class="btn primary" id="pasteForesta">コピーしたデータを取り込む</button>
-        </div>
-        <textarea id="bookmarkletCode" class="code hidden" readonly rows="3"></textarea>
 
-        <h4>データ</h4>
-        <p class="muted small">データはこの端末のブラウザに保存されます。月に1回くらい書き出して、「ファイル」アプリやiCloud Driveに保存しておくと安心です。</p>
-        <p class="small" id="backupInfo"></p>
-        <div class="sheet-actions">
-          <button type="button" class="btn secondary" id="exportData">書き出し</button>
-          <button type="button" class="btn secondary" id="importData">読み込み</button>
-          <input type="file" id="importFile" accept="application/json,.json" hidden>
+        <h4>事務給</h4>
+        <label class="field"><span>金額（円）</span>
+          <input type="number" name="office" inputmode="numeric" min="0"></label>
+        <div class="segmented">
+          <label><input type="radio" name="officeUnit" value="day"><span>出勤1日ごと</span></label>
+          <label><input type="radio" name="officeUnit" value="month"><span>1か月ごと</span></label>
         </div>
       </div>
     </form>
